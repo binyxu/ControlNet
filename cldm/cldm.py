@@ -75,6 +75,7 @@ class ControlNet(nn.Module):
             num_attention_blocks=None,
             disable_middle_self_attn=False,
             use_linear_in_transformer=False,
+            encode_cond_with_vae: bool = False
     ):
         super().__init__()
         if use_spatial_transformer:
@@ -127,6 +128,8 @@ class ControlNet(nn.Module):
         self.num_head_channels = num_head_channels
         self.num_heads_upsample = num_heads_upsample
         self.predict_codebook_ids = n_embed is not None
+        self.encode_cond_with_vae = encode_cond_with_vae
+        print("Control Net: ", self.encode_cond_with_vae)
 
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
@@ -144,23 +147,28 @@ class ControlNet(nn.Module):
         )
         self.zero_convs = nn.ModuleList([self.make_zero_conv(model_channels)])
 
-        self.input_hint_block = TimestepEmbedSequential(
-            conv_nd(dims, hint_channels, 16, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(dims, 16, 16, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(dims, 16, 32, 3, padding=1, stride=2),
-            nn.SiLU(),
-            conv_nd(dims, 32, 32, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(dims, 32, 96, 3, padding=1, stride=2),
-            nn.SiLU(),
-            conv_nd(dims, 96, 96, 3, padding=1),
-            nn.SiLU(),
-            conv_nd(dims, 96, 256, 3, padding=1, stride=2),
-            nn.SiLU(),
-            zero_module(conv_nd(dims, 256, model_channels, 3, padding=1))
-        )
+        if self.encode_cond_with_vae:
+            self.input_hint_block = TimestepEmbedSequential(
+                zero_module(conv_nd(dims, in_channels, model_channels, 3, padding=1))
+            )
+        else:
+            self.input_hint_block = TimestepEmbedSequential(
+                conv_nd(dims, hint_channels, 16, 3, padding=1),
+                nn.SiLU(),
+                conv_nd(dims, 16, 16, 3, padding=1),
+                nn.SiLU(),
+                conv_nd(dims, 16, 32, 3, padding=1, stride=2),
+                nn.SiLU(),
+                conv_nd(dims, 32, 32, 3, padding=1),
+                nn.SiLU(),
+                conv_nd(dims, 32, 96, 3, padding=1, stride=2),
+                nn.SiLU(),
+                conv_nd(dims, 96, 96, 3, padding=1),
+                nn.SiLU(),
+                conv_nd(dims, 96, 256, 3, padding=1, stride=2),
+                nn.SiLU(),
+                zero_module(conv_nd(dims, 256, model_channels, 3, padding=1))
+            )
 
         self._feature_size = model_channels
         input_block_chans = [model_channels]
@@ -281,11 +289,14 @@ class ControlNet(nn.Module):
     def make_zero_conv(self, channels):
         return TimestepEmbedSequential(zero_module(conv_nd(self.dims, channels, channels, 1, padding=0)))
 
-    def forward(self, x, hint, timesteps, context, **kwargs):
+    def forward(self, x, hint, timesteps, context, hint_z = None, **kwargs):
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)
 
-        guided_hint = self.input_hint_block(hint, emb, context)
+        if hint_z is not None and self.encode_cond_with_vae:
+            guided_hint = self.input_hint_block(hint_z, emb, context)
+        else:
+            guided_hint = self.input_hint_block(hint, emb, context)
 
         outs = []
 
@@ -307,8 +318,12 @@ class ControlNet(nn.Module):
 
 class ControlLDM(LatentDiffusion):
 
-    def __init__(self, control_stage_config, control_key, only_mid_control, *args, **kwargs):
+    def __init__(self, control_stage_config, control_key, only_mid_control, encode_cond_with_vae: bool = False, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.encode_cond_with_vae = encode_cond_with_vae
+        print(f"Encode condition with vae: {self.encode_cond_with_vae}")
+        control_stage_config['params']['encode_cond_with_vae'] = encode_cond_with_vae
+        print(control_stage_config)
         self.control_model = instantiate_from_config(control_stage_config)
         self.control_key = control_key
         self.only_mid_control = only_mid_control
@@ -334,7 +349,12 @@ class ControlLDM(LatentDiffusion):
         if cond['c_concat'] is None:
             eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=None, only_mid_control=self.only_mid_control)
         else:
-            control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), timesteps=t, context=cond_txt)
+            hint_z = None
+            if self.encode_cond_with_vae:
+                hint = torch.cat(cond['c_concat'], 1)
+                hint_encoder_posterior = self.encode_first_stage(hint)
+                hint_z = self.get_first_stage_encoding(hint_encoder_posterior).detach()
+            control = self.control_model(x=x_noisy, hint=torch.cat(cond['c_concat'], 1), hint_z=hint_z, timesteps=t, context=cond_txt)
             control = [c * scale for c, scale in zip(control, self.control_scales)]
             eps = diffusion_model(x=x_noisy, timesteps=t, context=cond_txt, control=control, only_mid_control=self.only_mid_control)
 

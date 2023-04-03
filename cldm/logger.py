@@ -11,7 +11,7 @@ from pytorch_lightning.utilities.distributed import rank_zero_only
 class ImageLogger(Callback):
     def __init__(self, batch_frequency=2000, max_images=4, clamp=True, increase_log_steps=True,
                  rescale=True, disabled=False, log_on_batch_idx=False, log_first_step=False,
-                 log_images_kwargs=None):
+                 log_images_kwargs=None, local_save_dir: str = None):
         super().__init__()
         self.rescale = rescale
         self.batch_freq = batch_frequency
@@ -23,6 +23,7 @@ class ImageLogger(Callback):
         self.log_on_batch_idx = log_on_batch_idx
         self.log_images_kwargs = log_images_kwargs if log_images_kwargs else {}
         self.log_first_step = log_first_step
+        self.local_save_dir = local_save_dir
 
     @rank_zero_only
     def log_local(self, save_dir, split, images, global_step, current_epoch, batch_idx):
@@ -62,7 +63,8 @@ class ImageLogger(Callback):
                     if self.clamp:
                         images[k] = torch.clamp(images[k], -1., 1.)
 
-            self.log_local(pl_module.logger.save_dir, split, images,
+            save_dir = self.local_save_dir if self.local_save_dir is not None else pl_module.logger.save_dir
+            self.log_local(save_dir, split, images,
                            pl_module.global_step, pl_module.current_epoch, batch_idx)
 
             if is_train:
