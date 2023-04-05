@@ -1,0 +1,41 @@
+description: banner_generation
+
+# https://ml.azure.com/clusters?flight=itpmerge
+# run "pt target list amlk8s" to list the names of available AMLK8s targets
+target:
+  service: sing
+  name: msrresrchvc
+
+environment:
+  image: banner-generation-dev:v3.1
+  username: resrchvc4cr
+  registry: resrchvc4cr.azurecr.io
+
+code:
+  local_dir: $CONFIG_DIR
+
+storage:
+  output: # use os.getenv("PT_OUTPUT_DIR", default=None) in your code to store output
+    storage_account_name: resrchvc4data
+    container_name: amulet
+
+data:
+  local_dir: /data/text2design/preprocess/img2design/theme_v1.0
+  remote_dir: text2design/preprocess/img2design
+
+# jobs:
+# - name: _description_
+#   sla_tier: _sla_tier_
+#   priority: high
+#   execution_mode: basic
+#   sku: _num_gpu_
+#   command:
+#   - export WANDB_API_KEY=d48471df8b6d437c10f0357541ceeb2b22245814
+#   - export WANDB_NAME="banner_generation-_description_"
+#   - pip install -e .
+#   - ./generator/scripts/blip_generation.sh train $$AMLT_DATA_DIR/preprocess/_stage_ $$AMLT_OUTPUT_DIR
+#   - CUDA_VISIBLE_DEVICES=0 ./generator/scripts/blip_generation.sh eval $$AMLT_DATA_DIR/preprocess/_stage_ $$AMLT_OUTPUT_DIR test
+
+#   submit_args: &retry_args
+#     # Max numbers of attempts to retry job. Default: 3.
+#     max_attempts: 1
