@@ -27,7 +27,7 @@ resume_path = './models/control_sd15_unet_with_vae_ini.ckpt'
 output_dir = f'/home/v-binyanxu/ControlNet/model_ckpts/{expr_name}'
 makedirs(output_dir)
 
-batch_size = 6
+batch_size = 4
 logger_freq = 1000
 learning_rate = 1e-5
 sd_locked = True
