@@ -55,6 +55,7 @@ class Img2DesignDataset(Dataset):
         if len(img.shape) == 2: # Grayscale image
             return cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
         elif img.shape[2] == 3: # RGB image
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             return img
         elif img.shape[2] == 4: # RGBA image
             alpha_channel = img[:, :, 3]
@@ -62,7 +63,9 @@ class Img2DesignDataset(Dataset):
             white_background = np.full_like(rgb_channels, 255)
             alpha_factor = alpha_channel[:, :, np.newaxis].astype(np.float32) / 255.0
             alpha_factor = np.concatenate((alpha_factor, alpha_factor, alpha_factor), axis=2)
-            return alpha_factor * rgb_channels + (1 - alpha_factor) * white_background
+            img = alpha_factor * rgb_channels + (1 - alpha_factor) * white_background
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            return img
         else:
             raise ValueError("Input image must be either grayscale (2D) or RGB (3D) or RGBA (4D).")
 

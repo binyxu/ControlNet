@@ -1,10 +1,9 @@
 import sys
 import os
 
-assert len(sys.argv) == 3, 'Args are wrong.'
 
-input_path = sys.argv[1]
-output_path = sys.argv[2]
+input_path = '/home/v-binyanxu/ControlNet/ControlNet/models/v1-5-pruned.ckpt'
+output_path = '/home/v-binyanxu/ControlNet/ControlNet/models/control_sd15_unet_with_vae_ini.ckpt'
 
 assert os.path.exists(input_path), 'Input model does not exist.'
 assert not os.path.exists(output_path), 'Output filename already exists.'
